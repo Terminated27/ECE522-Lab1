@@ -2,6 +2,7 @@ import argparse
 import subprocess
 import re
 
+
 def get_var_id(var, cycle=0, var_map=None):
     """
     Assigns or retrieves a unique CNF ID for a variable at a specific cycle.
@@ -21,6 +22,7 @@ def get_var_id(var, cycle=0, var_map=None):
         var_map[var_name] = len(var_map) + 1
     return var_map[var_name]
 
+
 def extract_transitions(verilog_code, unroll_count, var_map):
     """
     Extracts state transitions from the Verilog 'always' block and converts them to CNF clauses.
@@ -37,21 +39,25 @@ def extract_transitions(verilog_code, unroll_count, var_map):
     always_block = re.search(r'always\s*@\(posedge\s+\w+\)\s*begin(.*?)end', verilog_code, re.DOTALL)
     
     if always_block:
-        transitions = re.findall(r'(\w+)\s*<=\s*(\w+);', always_block.group(1))
+        transitions = re.findall(r'(\w+)\s*<=\s*(~?\w+);', always_block.group(1))  # Now handles ~S0
         
         for cycle in range(unroll_count):
             for dst, src in transitions:
+                is_negated = src.startswith("~")
+                src_var = src[1:] if is_negated else src  # Remove ~ if negated
+
                 dst_id = get_var_id(dst, cycle, var_map)
-                src_id = get_var_id(src, cycle + 1, var_map)
+                src_id = get_var_id(src_var, cycle + 1, var_map)
 
-                cnf_clauses.append([-(src_id), dst_id])  # (¬src_(t+1) ∨ dst_t)
-                cnf_clauses.append([-(dst_id), src_id])  # (¬dst_t ∨ src_(t+1))
-
-                next_dst_id = get_var_id(dst, cycle + 1, var_map)
-                cnf_clauses.append([-(src_id), next_dst_id])  # (¬src_(t+1) ∨ dst_(t+1))
-                cnf_clauses.append([-(next_dst_id), src_id])  # (¬dst_(t+1) ∨ src_(t+1))
+                if is_negated:
+                    cnf_clauses.append([src_id, dst_id])  # (src_(t+1) ∨ dst_t)  → dst_t = ~src_(t+1)
+                    cnf_clauses.append([-dst_id, -src_id])  # (-dst_t ∨ -src_(t+1))
+                else:
+                    cnf_clauses.append([-(src_id), dst_id])  # (¬src_(t+1) ∨ dst_t)
+                    cnf_clauses.append([-(dst_id), src_id])  # (¬dst_t ∨ src_(t+1))
 
     return cnf_clauses
+
 
 def enforce_initial_state(var_map):
     """
@@ -64,6 +70,7 @@ def enforce_initial_state(var_map):
         list: A list of CNF clauses enforcing the initial state.
     """
     return [[-var_map[var]] for var in var_map if var.endswith("_0")]
+
 
 def enforce_final_state(final_state, unroll_count, var_map):
     """
@@ -79,10 +86,12 @@ def enforce_final_state(final_state, unroll_count, var_map):
     """
     cnf_clauses = []
     for i, value in enumerate(final_state):
-        var_name = f"S{i}"  # Assuming state variables are named S0, S1, S2, etc.
+        # Assuming state variables are named S0, S1, S2, etc.
+        var_name = f"S{i}"
         var_id = get_var_id(var_name, unroll_count, var_map)
         cnf_clauses.append([var_id] if value == "1" else [-var_id])
     return cnf_clauses
+
 
 def generate_cnf_header(cnf_clauses, var_map):
     """
@@ -96,6 +105,7 @@ def generate_cnf_header(cnf_clauses, var_map):
         list: The CNF header in DIMACS format.
     """
     return [f"p cnf {len(var_map)} {len(cnf_clauses)}"]
+
 
 def parse_verilog(file_name, unroll_count, final_state):
     """
@@ -118,9 +128,11 @@ def parse_verilog(file_name, unroll_count, final_state):
     cnf_clauses += enforce_final_state(final_state, unroll_count, var_map)
 
     cnf_header = generate_cnf_header(cnf_clauses, var_map)
-    cnf_output = cnf_header + [" ".join(map(str, clause)) + " 0" for clause in cnf_clauses]
+    cnf_output = cnf_header + \
+        [" ".join(map(str, clause)) + " 0" for clause in cnf_clauses]
 
     return "\n".join(cnf_output), var_map
+
 
 def write_cnf_file(cnf_text, output_file):
     """
@@ -133,6 +145,7 @@ def write_cnf_file(cnf_text, output_file):
     with open(output_file, 'w') as f:
         f.write(cnf_text)
 
+
 def run_sat_solver(cnf_file):
     """
     Runs MiniSat on the given CNF file and captures the output.
@@ -144,30 +157,44 @@ def run_sat_solver(cnf_file):
         str: "SATISFIABLE" if the final state is reachable, otherwise "UNSATISFIABLE".
     """
     try:
-        result = subprocess.run(["minisat", cnf_file], capture_output=True, text=True)
+        result = subprocess.run(["minisat", cnf_file],
+                                capture_output=True, text=True)
         output = result.stdout
-        return "UNSATISFIABLE" if "UN" in output else "SATISFIABLE"
+        if "UNSAT" in output:
+            return "UNSATISFIABLE"
+        elif "SAT" in output:
+            return "SATISFIABLE"
+        else:
+            return "ERROR: Unknown MiniSat output"
     except FileNotFoundError:
         return "Error: MiniSat is not installed or not in the system PATH."
+
 
 def main():
     """
     Handles command-line arguments and runs the SAT solver.
     """
-    parser = argparse.ArgumentParser(description="Verilog to CNF Converter & SAT Solver Runner")
-    parser.add_argument("verilog_file", type=str, help="The Verilog file to process")
-    parser.add_argument("unroll_count", type=int, help="Number of state transition unrolls")
-    parser.add_argument("final_state", type=str, help="Target state as a binary string (e.g., 0100)")
+    parser = argparse.ArgumentParser(
+        description="Verilog to CNF Converter & SAT Solver Runner")
+    parser.add_argument("verilog_file", type=str,
+                        help="The Verilog file to process")
+    parser.add_argument("unroll_count", type=int,
+                        help="Number of state transition unrolls")
+    parser.add_argument("final_state", type=str,
+                        help="Target state as a binary string (e.g., 0100)")
 
     args = parser.parse_args()
 
-    final_state = list(args.final_state)  # Convert "0100" to ['0', '1', '0', '0']
+    # Convert "0100" to ['0', '1', '0', '0']
+    final_state = list(args.final_state)
 
-    cnf_text, _ = parse_verilog(args.verilog_file, args.unroll_count, final_state)
+    cnf_text, _ = parse_verilog(
+        args.verilog_file, args.unroll_count, final_state)
     write_cnf_file(cnf_text, "output.cnf")
 
     sat_result = run_sat_solver("output.cnf")
     print(f"SAT Solver Result: {sat_result}")
+
 
 if __name__ == "__main__":
     main()
