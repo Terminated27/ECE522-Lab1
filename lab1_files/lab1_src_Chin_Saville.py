@@ -2,7 +2,7 @@ import re
 from collections import defaultdict
 import subprocess
 import os
-
+import sys
 
 # Sample input
 text = """
@@ -111,6 +111,33 @@ def group_variables(operations):
             operations.append(('buffer', [ns_var, s_var]))
     return operations
 
+def process_operations(operations, state_string):
+    # Extract the highest suffix number from the operations:
+    max_suffix = max(int(var.split('_')[1]) for _, vars in operations for var in vars)
+
+    new_operations = []
+    
+    # Iterate through the provided operations
+    for operation, vars in operations:
+        new_operations.append((operation, vars))
+    
+    # Identify the initial states and final states
+    num_initial_states = len(state_string)  # This is the length of the state_string
+    for index in range(num_initial_states):  # Iterate through the length of the state string
+        initial_state = f'S{index}_0'
+        final_state = f'S{index}_{max_suffix}'
+        
+        # Always add 'zero' block for initial states
+        new_operations.append(('zero', [initial_state]))
+
+        # Determine whether to add 'one' or 'zero' for the final states based on the state_string
+        if state_string[index] == '1':
+            new_operations.append(('one', [final_state]))
+        else:
+            new_operations.append(('zero', [final_state]))
+    
+    return new_operations
+
 def index_variables(data):
     """
     This function takes an array of tuples where each tuple contains 
@@ -146,6 +173,10 @@ def convert_dimac(operations):
         if operation == 'buffer':
             args.append(f"-{variables[1]} {variables[0]} 0")
             args.append(f"{variables[1]} -{variables[0]} 0")
+        if operation == 'one':
+            args.append(f"{variables[0]} 0")
+        if operation == 'zero':
+            args.append(f"-{variables[0]} 0")
     return '\n'.join(args)
 
 def create_dimacs_header(input_string):
@@ -192,7 +223,6 @@ def write_dimacs_to_file(dimacs_content, filename='output.cnf'):
     """
     with open(filename, 'w') as file:
         file.write(dimacs_content)
-    print(f'DIMACS content written to {filename}')
 
 def run_minisat_with_file(file_path):
     """
@@ -213,15 +243,15 @@ def run_minisat_with_file(file_path):
     
     # Print out the results
     print("MiniSat Output:")
-    print(result.stdout)
-    
-    # Check for errors
-    if result.stderr:
-        print("MiniSat Error:")
-        print(result.stderr)
+    if "UNSATISFIABLE" in result.stdout:
+        print("UNSATISFIABLE")
+    elif "SATISFIABLE" in result.stdout:
+        print("SATISFIABLE")
+    else:
+        raise RuntimeError("Unexpected output from MiniSat.")
 
 
-def process_verilog_file(file_path, unroll=0):
+def process_verilog_file(file_path, unroll=0, target_state=''):
     # Read the Verilog file
     text = read_verilog_file(file_path)
     if text is None:
@@ -237,8 +267,9 @@ def process_verilog_file(file_path, unroll=0):
     # Group variables based on the logic defined
     grouped_operations = group_variables(incremented_operations)
 
+    encoded_states = process_operations(grouped_operations, target_state)
     # Index the variables
-    indexed_operations = index_variables(grouped_operations)
+    indexed_operations = index_variables(encoded_states)
 
     # Convert operations to DIMAC format
     dimacs_clauses = convert_dimac(indexed_operations)
@@ -252,4 +283,16 @@ def process_verilog_file(file_path, unroll=0):
     # Run MiniSat with the generated DIMACS file
     run_minisat_with_file('output.cnf')
 
-process_verilog_file('ex1.v')
+if __name__ == "__main__":
+    # Check if the correct number of arguments is provided
+    if len(sys.argv) != 4:
+        print("Usage: python3 lab1_src_Chin_Saville.py <verilog_file> <unroll> <target_state>")
+        sys.exit(1)
+
+    # Extract arguments from command line
+    file_path = sys.argv[1]
+    unroll = int(sys.argv[2])
+    target_state = sys.argv[3]
+
+    # Call the function with extracted arguments
+    process_verilog_file(file_path, unroll, target_state)

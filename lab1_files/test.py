@@ -1,55 +1,32 @@
-import re
-from collections import defaultdict
+def process_operations(operations, state_string):
+    # Extract the highest suffix number from the operations:
+    max_suffix = max(int(var.split('_')[1]) for _, vars in operations for var in vars)
 
-def group_variables(operations_with_vars):
-    # This will hold grouped results
-    grouped = defaultdict(list)
-
-    # Regular expression pattern to match variables
-    pattern = r'^(NS(\d+)_(\d+)|S(\d+)_(\d+))$'
-
-    # Process each operation and its variable list
-    for operation, variables in operations_with_vars:
-        for var in variables:
-            match = re.match(pattern, var)
-            if match:
-                if match.group(2) and match.group(3):  # Matches NSx_n
-                    x = match.group(2)  # get x
-                    n = int(match.group(3))  # get n
-                    grouped[x].append(('NS', n, operation))  # store with operation
-                elif match.group(4) and match.group(5):  # Matches Sx_n+1
-                    x = match.group(4)  # get x
-                    n = int(match.group(5)) - 1  # get n from Sx_n+1 and adjust
-                    grouped[x].append(('S', n, operation))  # store with operation
+    new_operations = []
     
-    # Prepare output as a list of tuples
-    result = []
-    for x, items in grouped.items():
-        ns_n = None
-        s_n_plus_one = None
-        ns_var = None
-        s_var = None
+    # Iterate through the provided operations
+    for operation, vars in operations:
+        new_operations.append((operation, vars))
+    
+    # Identify the initial states and final states
+    num_initial_states = len(state_string)  # This is the length of the state_string
+    for index in range(num_initial_states):  # Iterate through the length of the state string
+        initial_state = f'S{index}_0'
+        final_state = f'S{index}_{max_suffix}'
         
-        for item_type, n, operation in items:
-            if item_type == 'NS':
-                ns_n = n
-                ns_var = f'NS{x}_{ns_n}'  # Construct the variable name
-            if item_type == 'S':
-                s_n_plus_one = n
-                s_var = f'S{x}_{s_n_plus_one + 1}'  # Construct the variable name
+        # Always add 'zero' block for initial states
+        new_operations.append(('zero', [initial_state]))
 
-        # Only include valid pairs in the results
-        if ns_var is not None and s_var is not None:
-            result.append(('buffer', [ns_var, s_var]))
+        # Determine whether to add 'one' or 'zero' for the final states based on the state_string
+        if state_string[index] == '1':
+            new_operations.append(('one', [final_state]))
+        else:
+            new_operations.append(('zero', [final_state]))
+    
+    return new_operations
 
-    return result
-
-# Example usage
-input_operations = [
-    ('and', ['X1_', 'S0_', 'S1_']),
-    ('and', ['NS1_', 'A_', 'X1_']),
-    ('not', ['NS0_', 'X1_']),
-    ('and', ['Y_', 'A_', 'X1_']),
+# Sample input
+sample_input = [
     ('and', ['X1_0', 'S0_0', 'S1_0']),
     ('and', ['NS1_0', 'A_0', 'X1_0']),
     ('not', ['NS0_0', 'X1_0']),
@@ -57,8 +34,21 @@ input_operations = [
     ('and', ['X1_1', 'S0_1', 'S1_1']),
     ('and', ['NS1_1', 'A_1', 'X1_1']),
     ('not', ['NS0_1', 'X1_1']),
-    ('and', ['Y_1', 'A_1', 'X1_1'])
+    ('and', ['Y_1', 'A_1', 'X1_1']),
+    ('and', ['X1_2', 'S0_2', 'S1_2']),
+    ('and', ['NS1_2', 'A_2', 'X1_2']),
+    ('not', ['NS0_2', 'X1_2']),
+    ('and', ['Y_2', 'A_2', 'X1_2']),
+    ('buffer', ['NS0_2', 'S0_2']),
+    ('buffer', ['NS1_2', 'S1_2'])
 ]
 
-grouped_variables = group_variables(input_operations)
-print(grouped_variables)
+# Example state string (length corresponds to the number of initial states)
+state_string = "110"  # Should be the same length as the number of initial states (in this case 3)
+
+# Process the operations
+result = process_operations(sample_input, state_string)
+
+# Output the result
+for entry in result:
+    print(entry)
