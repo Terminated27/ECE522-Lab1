@@ -35,7 +35,9 @@ def read_verilog_file(file_path):
         print('An error occurred while trying to read the file.')
         return None  # You can choose to raise an exception or return None
 
-def extract_operations(text):
+Operation = tuple[str, list[str]]
+
+def extract_operations(text: str) -> list[Operation]:
     # Regex pattern to match the operations followed by the variables only
     pattern = r'\b(and|not)\s+g\d+\(([^)]+)\)'
 
@@ -62,54 +64,71 @@ def increment_variables(input_list, max_n):
             # Create a modified tuple with incremented suffix
             modified_tuple = (operation, [f"{var}{n}" for var in variables])
             modified_list.append(modified_tuple)
-
         # Append current modified list to combined output
-        combined_output.extend(modified_list)
-
+        combined_output.append(modified_list)
     return combined_output
 
 
-def group_variables(operations):
-    # This will hold grouped results
-    grouped = defaultdict(list)
+def group_variables(operations_list):
+    # This will hold all operations and their associated variables
+    all_operations = []
 
     # Regular expression pattern to match variables
     pattern = r'^(NS(\d+)_(\d+)|S(\d+)_(\d+))$'
 
-    # Process each operation and its variable list
-    for operation, variables in operations:
-        for var in variables:
-            match = re.match(pattern, var)
-            if match:
-                if match.group(2) and match.group(3):  # Matches NSx_n
-                    x = match.group(2)  # get x
-                    n = int(match.group(3))  # get n
-                    grouped[x].append(('NS', n, operation))  # store with operation
-                elif match.group(4) and match.group(5):  # Matches Sx_n+1
-                    x = match.group(4)  # get x
-                    n = int(match.group(5)) - 1  # get n from Sx_n+1 and adjust
-                    grouped[x].append(('S', n, operation))  # store with operation
-    
-    # Prepare output as a list of tuples
-    result = []
-    for x, items in grouped.items():
-        ns_n = None
-        s_n_plus_one = None
-        ns_var = None
-        s_var = None
-        
-        for item_type, n, operation in items:
-            if item_type == 'NS':
-                ns_n = n
-                ns_var = f'NS{x}_{ns_n}'  # Construct the variable name
-            if item_type == 'S':
-                s_n_plus_one = n
-                s_var = f'S{x}_{s_n_plus_one + 1}'  # Construct the variable name
+    # Variable to hold the last NS variables from the previous block
+    last_ns_vars = {}
 
-        # Only include valid pairs in the results
-        if ns_var is not None and s_var is not None:
-            operations.append(('buffer', [ns_var, s_var]))
-    return operations
+    # Iterate through each set of operations
+    for operations in operations_list:
+        # This will hold grouped results for the specific operations set
+        grouped = defaultdict(list)
+
+        # Process each operation and its variable list
+        for operation, variables in operations:
+            for var in variables:
+                match = re.match(pattern, var)
+                if match:
+                    if match.group(2) and match.group(3):  # Matches NSx_n
+                        x = match.group(2)  # extract x
+                        n = int(match.group(3))  # extract n
+                        grouped[x].append(('NS', n, operation))
+                    elif match.group(4) and match.group(5):  # Matches Sx_n+1
+                        x = match.group(4)  # extract x
+                        n = int(match.group(5)) - 1  # adjust n
+                        grouped[x].append(('S', n, operation))
+
+        # Prepare a dict to hold the current block's NS variables
+        current_ns_vars = {}
+
+        # Process each grouped variable for the current block
+        for x, items in grouped.items():
+            ns_var = None
+            s_var = None
+
+            # For each group x, determine the NS and S variables
+            for item_type, n, operation in items:
+                if item_type == 'NS':
+                    ns_var = f'NS{x}_{n}'
+                elif item_type == 'S':
+                    s_var = f'S{x}_{n + 1}'
+
+            # Save the NS variable (if exists) for the current block
+            if ns_var is not None:
+                current_ns_vars[x] = ns_var
+
+            # If a previous NS for this x exists and we have an S variable, add a buffer link
+            if x in last_ns_vars and s_var is not None:
+                last_ns_index = int(last_ns_vars[x].split('_')[-1])
+                current_s_index = int(s_var.split('_')[-1]) - 1  # get n from Sx_(n+1)
+                if last_ns_index == current_s_index:
+                    all_operations.append(('buffer', [last_ns_vars[x], s_var]))
+
+        # Update last_ns_vars for the next block and add the current operations
+        last_ns_vars = current_ns_vars
+        all_operations.extend(operations)
+
+    return all_operations
 
 def process_operations(operations, state_string):
     # Extract the highest suffix number from the operations:
@@ -153,7 +172,7 @@ def index_variables(data):
         unique_vars.update(variables)
 
     # Step 2: Create a mapping from variable to unique index
-    var_to_index = {var: idx + 1 for idx, var in enumerate(unique_vars)}
+    var_to_index = {var: idx + 1 for idx, var in enumerate(sorted(unique_vars))}
 
     # Step 3: Replace variables in the tuples with their indices
     indexed_data = [(operation, [var_to_index[var] for var in variables]) for operation, variables in data]
@@ -263,11 +282,14 @@ def process_verilog_file(file_path, unroll=0, target_state=''):
 
     # Increment variables for a specified range
     incremented_operations = increment_variables(operations, unroll)
-
+    # ^ make this output a list of unrolling groups to simplify next step, list[list[tuple[str, list[str]]]]
     # Group variables based on the logic defined
+
     grouped_operations = group_variables(incremented_operations)
 
+
     encoded_states = process_operations(grouped_operations, target_state)
+
     # Index the variables
     indexed_operations = index_variables(encoded_states)
 
@@ -293,6 +315,6 @@ if __name__ == "__main__":
     file_path = sys.argv[1]
     unroll = int(sys.argv[2])
     target_state = sys.argv[3]
-
+    reversed_state = target_state[::-1]
     # Call the function with extracted arguments
-    process_verilog_file(file_path, unroll, target_state)
+    process_verilog_file(file_path, unroll, reversed_state)
