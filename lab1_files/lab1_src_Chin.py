@@ -243,15 +243,19 @@ def write_dimacs_to_file(dimacs_content, filename='output.cnf'):
     with open(filename, 'w') as file:
         file.write(dimacs_content)
 
+import os
+import subprocess
+import re
+
 def run_minisat_with_file(file_path):
     """
-    Run a DIMACS CNF file through MiniSat and return the output.
+    Run a DIMACS CNF file through MiniSat and return the output along with execution time.
 
     Parameters:
     file_path (str): The path to the DIMACS CNF file.
 
     Returns:
-    tuple: A tuple containing stdout, stderr, and a return code from MiniSat.
+    tuple: A tuple containing stdout, stderr, return code from MiniSat, and extracted runtime.
     """
     # Step 1: Check if the file exists
     if not os.path.isfile(file_path):
@@ -259,7 +263,7 @@ def run_minisat_with_file(file_path):
 
     # Step 2: Call MiniSat with the file
     result = subprocess.run(['minisat', file_path], capture_output=True, text=True)
-    
+
     # Print out the results
     print("MiniSat Output:")
     if "UNSATISFIABLE" in result.stdout:
@@ -268,6 +272,15 @@ def run_minisat_with_file(file_path):
         print("SATISFIABLE")
     else:
         raise RuntimeError("Unexpected output from MiniSat.")
+
+    # Extract runtime using regex (handling wide spaces)
+    runtime_match = re.search(r'CPU time\s*:\s*([\d.]+)\s*s', result.stdout)
+    runtime = float(runtime_match.group(1)) if runtime_match else None
+
+    if runtime is not None:
+        print(f"Runtime: {runtime:.6f} seconds")
+
+    return result.stdout, result.stderr, result.returncode, runtime
 
 
 def process_verilog_file(file_path, unroll=0, target_state=''):
