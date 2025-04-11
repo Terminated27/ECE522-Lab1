@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
+<nta>
+	<declaration>// Place global declarations here
+chan pedButton;
+chan sigR, sigG, sigY;
+chan pedG, pedR;
+clock time;
+</declaration>
+	<template>
+		<name x="5" y="5">traffic_light</name>
+		<declaration>// Place local declarations here.
+clock t;</declaration>
+		<location id="id0" x="-127" y="76" color="#ff0000">
+			<name x="-137" y="42">Red</name>
+			<label kind="invariant" x="-161" y="17">t &lt;= 60</label>
+		</location>
+		<location id="id1" x="102" y="204" color="#ffff00">
+			<name x="85" y="221">Yellow</name>
+			<label kind="invariant" x="85" y="246">t &lt;= 5</label>
+		</location>
+		<location id="id2" x="297" y="76">
+			<name x="272" y="34">Pending</name>
+			<label kind="invariant" x="280" y="102">t &lt;= 60</label>
+		</location>
+		<location id="id3" x="102" y="-59" color="#00ff00">
+			<name x="85" y="-102">Green</name>
+			<label kind="invariant" x="68" y="-127">t &lt;= 60</label>
+		</location>
+		<init ref="id0"/>
+		<transition id="id4">
+			<source ref="id1"/>
+			<target ref="id0"/>
+			<label kind="synchronisation" x="-109" y="123">sigR!</label>
+			<label kind="assignment" x="-109" y="140">t:=0</label>
+		</transition>
+		<transition id="id5">
+			<source ref="id3"/>
+			<target ref="id1"/>
+			<label kind="assignment" x="110" y="76">t := 0</label>
+		</transition>
+		<transition id="id6">
+			<source ref="id0"/>
+			<target ref="id3"/>
+			<label kind="synchronisation" x="-59" y="-51">sigG!</label>
+			<label kind="assignment" x="-59" y="-34">t:=0</label>
+		</transition>
+		<transition id="id7">
+			<source ref="id2"/>
+			<target ref="id1"/>
+			<label kind="assignment" x="195" y="153">t := 0</label>
+		</transition>
+		<transition id="id8">
+			<source ref="id3"/>
+			<target ref="id2"/>
+			<label kind="synchronisation" x="195" y="-25">pedButton?</label>
+		</transition>
+	</template>
+	<template>
+		<name>pedestrianwalking</name>
+		<declaration>clock c;
+int pedCrossTime = 55;</declaration>
+		<location id="id9" x="-221" y="-68">
+			<name x="-238" y="-110">Idle</name>
+		</location>
+		<location id="id10" x="153" y="-68">
+			<name x="143" y="-102">Walking</name>
+			<label kind="invariant" x="143" y="-51">c&lt;=pedCrossTime</label>
+		</location>
+		<location id="id11" x="-34" y="-212">
+			<name x="-59" y="-255">Waiting</name>
+		</location>
+		<init ref="id9"/>
+		<transition id="id12">
+			<source ref="id9"/>
+			<target ref="id9"/>
+			<label kind="synchronisation" x="-339" y="-42">pedG?</label>
+			<nail x="-238" y="0"/>
+			<nail x="-289" y="-68"/>
+		</transition>
+		<transition id="id13">
+			<source ref="id10"/>
+			<target ref="id9"/>
+			<label kind="guard" x="-110" y="-102">c &gt;= pedCrossTime</label>
+		</transition>
+		<transition id="id14">
+			<source ref="id11"/>
+			<target ref="id10"/>
+			<label kind="synchronisation" x="59" y="-178">pedG?</label>
+			<label kind="assignment" x="59" y="-161">c:=0</label>
+		</transition>
+		<transition id="id15">
+			<source ref="id9"/>
+			<target ref="id11"/>
+			<label kind="synchronisation" x="-204" y="-170">pedButton!</label>
+		</transition>
+	</template>
+	<template>
+		<name>crosswalk_light</name>
+		<declaration>clock p;</declaration>
+		<location id="id16" x="-255" y="-34" color="#00ff00">
+			<name x="-323" y="-51">Green</name>
+			<label kind="invariant" x="-323" y="-25">p&lt;=55</label>
+		</location>
+		<location id="id17" x="-17" y="-34" color="#ff0000">
+			<name x="-27" y="-68">Red</name>
+		</location>
+		<location id="id18" x="-136" y="42">
+			<urgent/>
+		</location>
+		<init ref="id16"/>
+		<transition id="id19">
+			<source ref="id17"/>
+			<target ref="id18"/>
+			<label kind="synchronisation" x="-119" y="-34">sigR?</label>
+			<label kind="assignment" x="-119" y="-17">p = 0</label>
+		</transition>
+		<transition id="id20">
+			<source ref="id18"/>
+			<target ref="id16"/>
+			<label kind="synchronisation" x="-204" y="-34">pedG!</label>
+		</transition>
+		<transition id="id21">
+			<source ref="id16"/>
+			<target ref="id17"/>
+			<label kind="guard" x="-153" y="-136">p &gt;= 55</label>
+			<label kind="synchronisation" x="-153" y="-119">sigG?</label>
+			<nail x="-136" y="-93"/>
+		</transition>
+	</template>
+	<system>// Place template instantiations here.
+trafficlight=traffic_light();
+crosswalklight=crosswalk_light();
+pedestrian=pedestrianwalking();
+// List one or more processes to be composed into a system.
+system trafficlight, crosswalklight, pedestrian;
+</system>
+	<queries>
+		<option key="--diagnostic" value="1"/>
+		<query>
+			<formula>A[] !(trafficlight.Pending &amp;&amp; time &lt; 70)</formula>
+			<comment/>
+			<result outcome="failure" type="quality" timestamp="2025-04-01 14:35:06 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>E&lt;&gt; trafficlight.Green &amp;&amp; crosswalklight.Green</formula>
+			<comment/>
+			<result outcome="failure" type="quality" timestamp="2025-04-01 20:27:37 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>A[] !(trafficlight.Green &amp;&amp; t &gt; 90)</formula>
+			<comment/>
+			<result outcome="success" type="quality" timestamp="2025-04-01 14:51:02 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>A[] !(trafficlight.Pending &amp;&amp; t &gt;= 55)</formula>
+			<comment/>
+			<result outcome="failure" type="quality" timestamp="2025-04-01 14:51:41 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>A[] !(trafficlight.Pending &amp;&amp; t &gt;= 65)</formula>
+			<comment/>
+			<result outcome="success" type="quality" timestamp="2025-04-01 14:52:05 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>E&lt;&gt; trafficlight.Green &amp;&amp; crosswalklight.Red</formula>
+			<comment/>
+			<result outcome="success" type="quality" timestamp="2025-04-01 14:53:17 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>A[] trafficlight.Green &amp;&amp; crosswalklight.Red</formula>
+			<comment/>
+			<result outcome="failure" type="quality" timestamp="2025-04-01 14:54:13 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>A[] !(countSigG == 3 and t &lt; 300)
+</formula>
+			<comment/>
+			<result outcome="failure" type="quality" timestamp="2025-04-01 15:04:46 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>A[] !(countSigG == 3 and t &lt; 400)
+</formula>
+			<comment/>
+			<result outcome="failure" type="quality" timestamp="2025-04-01 15:04:48 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>E&lt;&gt; (pedestrian.Walking &amp;&amp; trafficlight.Green)</formula>
+			<comment/>
+			<option key="--diagnostic" value="1"/>
+			<result outcome="failure" type="quality" timestamp="2025-04-02 16:09:00 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>A[] not (pedestrian.Walking &amp;&amp; trafficlight.Green)</formula>
+			<comment/>
+			<result outcome="failure" type="quality" timestamp="2025-04-02 16:05:15 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+		<query>
+			<formula>E&lt;&gt; (crosswalklight.Green &amp;&amp; trafficlight.Green)</formula>
+			<comment/>
+			<option key="--diagnostic" value="1"/>
+			<result outcome="failure" type="quality" timestamp="2025-04-02 16:04:24 -0400">
+				<option key="--diagnostic" value="1"/>
+			</result>
+		</query>
+	</queries>
+</nta>

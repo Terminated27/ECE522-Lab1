@@ -1,0 +1,26 @@
+// Hybrid System Example: Bouncing Ball
+
+g:=1;     // constant for acceleration from gravity
+
+automaton bball
+   contr_var: x, v;    // x is position, v is velocity
+   synclabs: jump;
+   loc falling: while 0<=x & x<=3 & -3<=v & v<=3 wait {x'==v & v'==-g}
+                when x==0 & v<0 sync jump do {v'==-v*0.5 & x'==x} goto falling;
+   initially: falling & x==2 & v==0;
+end
+
+// --------------------- Start of Analysis -------------------------------
+bball.add_label(tau);
+pc:=0.05;                        // define partition constraint
+bball.set_partition_constraints((x,pc),(v,pc),tau); 
+
+reg=bball.reachable;            // reached part of state space
+reg.print("out_reach",2);       // output as list of vertices
+
+inv=bball.get_invariants;       // grid of partitions explored
+inv.print("out_inv",2);
+
+// add commands here to check reachable states
+
+

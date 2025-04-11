@@ -300,8 +300,9 @@ def process_verilog_file(file_path, unroll=0, target_state=''):
 
     grouped_operations = group_variables(incremented_operations)
 
-
     encoded_states = process_operations(grouped_operations, target_state)
+    print("   ", *encoded_states, sep="\n")
+
 
     # Index the variables
     indexed_operations = index_variables(encoded_states)
