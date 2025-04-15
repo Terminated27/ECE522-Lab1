@@ -1,0 +1,3 @@
+PHAVerLite 0.7: starting
+  Parsing file bouncing_ball_pc_0.005.pha
+  Computing reachable states of bball
